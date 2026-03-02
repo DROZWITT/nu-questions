@@ -16,7 +16,7 @@ from telegram.ext import (
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 PORT = int(os.environ.get("PORT", 10000))
-WEBHOOK_URL = "https://nu-questions.onrender.com"
+WEBHOOK_URL = "https://nu-questions-1.onrender.com"
 
 # ⚠️ ID группы (из ссылки https://t.me/c/3466972957/4)
 GROUP_ID = -1003466972957
