@@ -17,7 +17,7 @@ GROUP_ID = -1003466972957
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Бот работает 🚀")
+    await update.message.reply_text("Привет! Бот работает ска 🚀")
 
 
 # 🔹 ОБРАБОТКА ДАННЫХ ИЗ WEBAPP
