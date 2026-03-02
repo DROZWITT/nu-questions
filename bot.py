@@ -1,6 +1,11 @@
 import os
 import json
-from telegram import Update
+from telegram import (
+    Update,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    WebAppInfo,
+)
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -13,15 +18,34 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 PORT = int(os.environ.get("PORT", 10000))
 WEBHOOK_URL = "https://nu-questions.onrender.com"
 
+# ID твоей группы
 GROUP_ID = -1003466972957
 
 
+# 🔹 КНОПКА ОТКРЫТИЯ WEBAPP
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Бот работает ска 🚀")
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                text="📨 Открыть форму",
+                web_app=WebAppInfo(
+                    url="https://nu-questions.onrender.com/index.html"
+                ),
+            )
+        ]
+    ])
+
+    await update.message.reply_text(
+        "Нажми кнопку ниже, чтобы отправить вопрос:",
+        reply_markup=keyboard,
+    )
 
 
 # 🔹 ОБРАБОТКА ДАННЫХ ИЗ WEBAPP
 async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.web_app_data:
+        return
+
     data = json.loads(update.message.web_app_data.data)
 
     name = data.get("name")
@@ -42,8 +66,6 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
-
-# 🔥 ВАЖНО — ЭТА СТРОКА ОБЯЗАТЕЛЬНА
 app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_handler))
 
 
