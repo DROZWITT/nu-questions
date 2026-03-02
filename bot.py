@@ -18,12 +18,19 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 PORT = int(os.environ.get("PORT", 10000))
 WEBHOOK_URL = "https://nu-questions.onrender.com"
 
-# ID твоей группы
 GROUP_ID = -1003466972957
 
 
 # 🔹 КНОПКА ОТКРЫТИЯ WEBAPP
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    # ❗ ВАЖНО: если команда не в личке — не показываем WebApp кнопку
+    if update.effective_chat.type != "private":
+        await update.message.reply_text(
+            "❗ Откройте бота в личных сообщениях для отправки запроса."
+        )
+        return
+
     keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
@@ -43,14 +50,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # 🔹 ОБРАБОТКА ДАННЫХ ИЗ WEBAPP
 async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.web_app_data:
+
+    if not update.message or not update.message.web_app_data:
         return
 
     data = json.loads(update.message.web_app_data.data)
 
-    name = data.get("name")
-    issue = data.get("issue")
-    user_id = data.get("user_id")
+    name = data.get("name", "Не указано")
+    issue = data.get("issue", "Не указано")
+    user_id = data.get("user_id", "Неизвестно")
 
     text = (
         "📩 Новый запрос\n\n"
