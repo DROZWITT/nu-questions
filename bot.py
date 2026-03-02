@@ -27,7 +27,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
-                text="📨 Открыть форму",
+                text="📨 Открыть форму запроса",
                 web_app=WebAppInfo(
                     url="https://nu-questions.onrender.com/index.html"
                 ),
