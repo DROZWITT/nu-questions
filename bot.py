@@ -43,7 +43,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton(
                 text="📨 Открыть форму запроса",
                 web_app=WebAppInfo(
-                    url="https://nu-questions.onrender.com"
+                    url="https://nu-questions-1.onrender.com"
                 ),
             )
         ]
