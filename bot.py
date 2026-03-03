@@ -21,7 +21,7 @@ if not BOT_TOKEN:
 PORT = int(os.environ.get("PORT", 10000))
 
 # ✅ ВАЖНО: должен совпадать с реальным URL Render
-WEBHOOK_URL = "https://nu-questions.onrender.com"
+WEBHOOK_URL = "https://nu-questions-1.onrender.com"
 
 # ⚠️ Пока оставим старый ID — позже проверим реальный
 GROUP_ID = -1003466972957
