@@ -15,17 +15,26 @@ from telegram.ext import (
 )
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-PORT = int(os.environ.get("PORT", 10000))
-WEBHOOK_URL = "https://nu-questions-1.onrender.com"
+if not BOT_TOKEN:
+    raise RuntimeError("❌ BOT_TOKEN не установлен!")
 
-# ⚠️ ID группы (из ссылки https://t.me/c/3466972957/4)
+PORT = int(os.environ.get("PORT", 10000))
+
+# ✅ ВАЖНО: должен совпадать с реальным URL Render
+WEBHOOK_URL = "https://nu-questions.onrender.com"
+
+# ⚠️ Пока оставим старый ID — позже проверим реальный
 GROUP_ID = -1003466972957
+
+
+# 🔹 DEBUG ДЛЯ ПОЛУЧЕНИЯ РЕАЛЬНОГО ID ГРУППЫ
+async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print("REAL CHAT ID:", update.effective_chat.id)
 
 
 # 🔹 КНОПКА ОТКРЫТИЯ WEBAPP
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    # В группе кнопку не показываем
     if update.effective_chat.type != "private":
         return
 
@@ -34,7 +43,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton(
                 text="📨 Открыть форму запроса",
                 web_app=WebAppInfo(
-                    url="https://nu-questions-1.onrender.com"
+                    url="https://nu-questions.onrender.com"
                 ),
             )
         ]
@@ -51,11 +60,7 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     print("=== WEBAPP HANDLER TRIGGERED ===")
 
-    if not update.message:
-        print("❌ Нет сообщения")
-        return
-
-    if not update.message.web_app_data:
+    if not update.message or not update.message.web_app_data:
         print("❌ Нет web_app_data")
         return
 
@@ -64,7 +69,7 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         data = json.loads(update.message.web_app_data.data)
     except Exception as e:
-        print("❌ Ошибка JSON:", e)
+        print("❌ Ошибка JSON:", repr(e))
         return
 
     name = data.get("name", "Не указано")
@@ -85,7 +90,7 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         print("✅ Сообщение отправлено в группу")
     except Exception as e:
-        print("❌ Ошибка отправки в группу:", e)
+        print("❌ Ошибка отправки в группу:", repr(e))
         return
 
     await update.message.reply_text("✅ Ваш запрос отправлен!")
@@ -96,6 +101,9 @@ app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_handler))
+
+# 🔥 временно включаем debug
+app.add_handler(MessageHandler(filters.ALL, debug))
 
 
 # 🔹 ЗАПУСК ЧЕРЕЗ WEBHOOK
