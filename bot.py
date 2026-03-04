@@ -25,10 +25,6 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise RuntimeError("❌ BOT_TOKEN не установлен!")
 
-PORT = int(os.environ.get("PORT", 10000))
-
-WEBHOOK_URL = "https://nu-questions-1.onrender.com"
-
 # ID группы
 GROUP_ID = -1003466972957
 
@@ -43,7 +39,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [
                 KeyboardButton(
                     text="📨 Открыть форму запроса",
-                    web_app=WebAppInfo(url=WEBHOOK_URL)
+                    web_app=WebAppInfo(url="https://nu-questions-1.onrender.com")
                 )
             ]
         ],
@@ -71,7 +67,7 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = data.get("name", "Не указано")
     issue = data.get("issue", "Не указано")
     user_id = data.get("user_id", "Неизвестно")
-    thread_id = data.get("thread_id", 4)  # 🔥 Тема №4
+    thread_id = data.get("thread_id", 4)  # Тема №4
 
     text_to_group = (
         "📩 Новый запрос\n\n"
@@ -94,18 +90,13 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ошибка отправки.")
 
 
-# 🔹 Запуск
+# 🔹 Запуск через polling
 if __name__ == "__main__":
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_handler))
 
-    print(f"🚀 Бот запускается на порту {PORT}...")
+    print("🚀 Бот запущен через polling...")
 
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        url_path=BOT_TOKEN,
-        webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}",
-    )
+    app.run_polling()
