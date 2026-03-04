@@ -1,82 +1,111 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        body {
-            font-family: sans-serif;
-            padding: 20px;
-            background: var(--tg-theme-bg-color);
-            color: var(--tg-theme-text-color);
-        }
+import os
+import json
+import logging
+from telegram import (
+    Update,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+    WebAppInfo,
+)
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
-        input, textarea {
-            width: 100%;
-            margin: 10px 0;
-            padding: 12px;
-            border-radius: 10px;
-            border: 1px solid var(--tg-theme-hint-color);
-            background: var(--tg-theme-secondary-bg-color);
-            color: var(--tg-theme-text-color);
-            box-sizing: border-box;
-            font-size: 16px;
-        }
+# Логи
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
-        button {
-            width: 100%;
-            padding: 15px;
-            background: var(--tg-theme-button-color);
-            color: var(--tg-theme-button-text-color);
-            border: none;
-            border-radius: 10px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-    </style>
-</head>
-<body>
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise RuntimeError("❌ BOT_TOKEN не установлен!")
 
-<h3>📩 Отправить запрос</h3>
+PORT = int(os.environ.get("PORT", 10000))
 
-<input type="text" id="name" placeholder="Ваше имя">
-<textarea id="issue" placeholder="Опишите ваш вопрос..." rows="5"></textarea>
-<button id="send_btn">Отправить в группу</button>
+WEBHOOK_URL = "https://nu-questions-1.onrender.com"
 
-<script>
-    let tg = window.Telegram.WebApp;
-    tg.expand();
+# ID группы
+GROUP_ID = -1003466972957
 
-    if (tg.initDataUnsafe?.user) {
-        const user = tg.initDataUnsafe.user;
-        document.getElementById("name").value =
-            (user.first_name || "") + " " + (user.last_name || "");
-    }
 
-    document.getElementById("send_btn").onclick = () => {
-        let name = document.getElementById("name").value.trim();
-        let issue = document.getElementById("issue").value.trim();
+# 🔹 /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type != "private":
+        return
 
-        if (name.length < 2 || issue.length < 5) {
-            tg.showAlert("Пожалуйста, заполните все поля корректно");
-            return;
-        }
+    keyboard = ReplyKeyboardMarkup(
+        [
+            [
+                KeyboardButton(
+                    text="📨 Открыть форму запроса",
+                    web_app=WebAppInfo(url=WEBHOOK_URL)
+                )
+            ]
+        ],
+        resize_keyboard=True
+    )
 
-        tg.showConfirm("Отправить запрос в группу?", (confirmed) => {
-            if (!confirmed) return;
+    await update.message.reply_text(
+        "Нажмите кнопку ниже, чтобы отправить запрос:",
+        reply_markup=keyboard,
+    )
 
-            let data = {
-                name: name,
-                issue: issue,
-                user_id: tg.initDataUnsafe?.user?.id || null
-            };
 
-            tg.sendData(JSON.stringify(data));
-            tg.close();
-        });
-    };
-</script>
+# 🔹 Обработка WebApp
+async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-</body>
-</html>
+    if not update.message.web_app_data:
+        return
+
+    try:
+        data = json.loads(update.message.web_app_data.data)
+    except Exception as e:
+        print("Ошибка JSON:", e)
+        return
+
+    name = data.get("name", "Не указано")
+    issue = data.get("issue", "Не указано")
+    user_id = data.get("user_id", "Неизвестно")
+    thread_id = data.get("thread_id", 4)  # 🔥 Тема №4
+
+    text_to_group = (
+        "📩 Новый запрос\n\n"
+        f"👤 Имя: {name}\n"
+        f"🆔 ID: {user_id}\n\n"
+        f"📝 Вопрос:\n{issue}"
+    )
+
+    try:
+        await context.bot.send_message(
+            chat_id=GROUP_ID,
+            text=text_to_group,
+            message_thread_id=thread_id
+        )
+
+        await update.message.reply_text("✅ Ваш запрос отправлен в тему №4!")
+
+    except Exception as e:
+        print("Ошибка отправки:", e)
+        await update.message.reply_text("❌ Ошибка отправки.")
+
+
+# 🔹 Запуск
+if __name__ == "__main__":
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_handler))
+
+    print(f"🚀 Бот запускается на порту {PORT}...")
+
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=BOT_TOKEN,
+        webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}",
+    )
