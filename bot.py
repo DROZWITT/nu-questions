@@ -6,6 +6,7 @@ from telegram import (
     ReplyKeyboardMarkup,
     KeyboardButton,
     WebAppInfo,
+    MenuButtonWebApp,
 )
 from telegram.ext import (
     ApplicationBuilder,
@@ -15,115 +16,97 @@ from telegram.ext import (
     filters,
 )
 
-# Настройка логирования для Render
+# Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+logger = logging.getLogger(__name__)
 
+# Константы
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-if not BOT_TOKEN:
-    raise RuntimeError("❌ BOT_TOKEN не установлен!")
-
+WEBHOOK_URL = "https://nu-questions-1.onrender.com"
+GROUP_ID = -1003466972957 
 PORT = int(os.environ.get("PORT", 10000))
 
-# URL вашего приложения на Render
-WEBHOOK_URL = "https://nu-questions-1.onrender.com"
+# 1. Установка кнопки в меню (слева от ввода сообщения)
+async def post_init(application):
+    await application.bot.set_chat_menu_button(
+        menu_button=MenuButtonWebApp(
+            text="Задать вопрос",
+            web_app=WebAppInfo(url=WEBHOOK_URL)
+        )
+    )
+    logger.info("✅ Кнопка меню успешно настроена")
 
-# ID вашей группы (убедитесь, что бот добавлен в группу как администратор)
-GROUP_ID = -1003466972957
-
-
-# 🔹 DEBUG: Получение ID чата (напишите любое сообщение в группе, чтобы увидеть ID)
-async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print(f"DEBUG: Message from chat_id: {update.effective_chat.id}")
-
-
-# 🔹 КОМАНДА /START
+# 2. Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Работаем только в личке с пользователем
     if update.effective_chat.type != "private":
         return
 
-    # ВАЖНО: Используем KeyboardButton для работы tg.sendData()
+    # Дублируем кнопку в самой клавиатуре для удобства
     keyboard = ReplyKeyboardMarkup([
-        [
-            KeyboardButton(
-                text="📨 Открыть форму запроса",
-                web_app=WebAppInfo(url=WEBHOOK_URL)
-            )
-        ]
+        [KeyboardButton(text="📨 Открыть форму", web_app=WebAppInfo(url=WEBHOOK_URL))]
     ], resize_keyboard=True)
 
     await update.message.reply_text(
-        "Нажмите кнопку на клавиатуре, чтобы заполнить форму:",
+        "Привет! Нажми на кнопку <b>Открыть форму</b> ниже или используй синюю кнопку в меню, чтобы отправить свой вопрос.",
         reply_markup=keyboard,
+        parse_mode="HTML"
     )
 
-
-# 🔹 ОБРАБОТКА ДАННЫХ ИЗ WEBAPP
+# 3. Обработка данных из WebApp
 async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print("=== ПОЛУЧЕНЫ ДАННЫЕ ИЗ WEBAPP ===")
-    
-    # Проверка наличия данных
     if not update.message.web_app_data:
-        print("❌ Данные web_app_data отсутствуют")
         return
 
-    raw_data = update.message.web_app_data.data
-    print(f"📦 Сырые данные: {raw_data}")
-
     try:
+        # Парсим данные, которые прислал JS из WebApp
+        raw_data = update.message.web_app_data.data
         data = json.loads(raw_data)
-    except Exception as e:
-        print(f"❌ Ошибка парсинга JSON: {e}")
-        return
+        
+        name = data.get("name", "Не указано")
+        issue = data.get("issue", "Текст отсутствует")
+        
+        # Данные пользователя берем напрямую из Telegram
+        user = update.effective_user
+        username = f"@{user.username}" if user.username else "скрыт"
+        user_id = user.id
 
-    name = data.get("name", "Не указано")
-    issue = data.get("issue", "Не указано")
-    user_id = data.get("user_id", "Неизвестно")
-    username = update.effective_user.username or "нет юзернейма"
+        text_to_group = (
+            f"📩 <b>Новый запрос</b>\n\n"
+            f"👤 <b>Имя:</b> {name}\n"
+            f"🔗 <b>Аккаунт:</b> {username}\n"
+            f"🆔 <b>ID:</b> <code>{user_id}</code>\n\n"
+            f"📝 <b>Вопрос:</b>\n{issue}"
+        )
 
-    # Формируем текст для группы
-    text_to_group = (
-        "📩 **Новый запрос из WebApp**\n\n"
-        f"👤 **Имя:** {name}\n"
-        f"🔗 **Аккаунт:** @{username}\n"
-        f"🆔 **ID:** `{user_id}`\n\n"
-        f"📝 **Вопрос:**\n{issue}"
-    )
-
-    try:
         # Отправка в группу
         await context.bot.send_message(
-            chat_id=GROUP_ID,
-            text=text_to_group,
-            parse_mode="Markdown"
+            chat_id=GROUP_ID, 
+            text=text_to_group, 
+            parse_mode="HTML"
         )
-        print("✅ Сообщение успешно отправлено в группу")
         
-        # Подтверждение пользователю
-        await update.message.reply_text("✅ Ваш запрос успешно отправлен в поддержку!")
+        # Ответ пользователю
+        await update.message.reply_text("✅ Твой запрос отправлен! Мы скоро изучим его.")
         
     except Exception as e:
-        print(f"❌ Ошибка при отправке в группу: {e}")
-        await update.message.reply_text("❌ Произошла ошибка при отправке. Попробуйте позже.")
+        logger.error(f"Ошибка при обработке WebApp: {e}")
+        await update.message.reply_text("❌ Произошла ошибка при обработке формы.")
 
-
-# 🔹 ЗАПУСК
 if __name__ == "__main__":
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    if not BOT_TOKEN:
+        print("❌ ОШИБКА: BOT_TOKEN не найден в переменных окружения!")
+        exit(1)
 
-    # Хендлеры
+    app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
+
     app.add_handler(CommandHandler("start", start))
-    # Этот фильтр ловит данные из WebApp
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_handler))
-    # Вспомогательный хендлер для отладки
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, debug))
 
-    print(f"🚀 Бот запускается на порту {PORT}...")
+    print(f"🚀 Запуск webhook на порту {PORT}...")
     
-    # Запуск Webhook
     app.run_webhook(
         listen="0.0.0.0",
         port=PORT,
