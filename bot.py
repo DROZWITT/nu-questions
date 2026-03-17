@@ -50,7 +50,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [
                     InlineKeyboardButton(
                         text="✉️ Заполнить заявку",
-                        url="https://t.me/YOUR_BOT_USERNAME"
+                        url="https://t.me/LigoRecords_bot"
                     )
                 ]
             ]
