@@ -5,6 +5,8 @@ from telegram import (
     Update,
     ReplyKeyboardMarkup,
     KeyboardButton,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
     WebAppInfo,
 )
 from telegram.ext import (
@@ -31,10 +33,38 @@ GROUP_ID = -1003466972957
 
 # 🔹 /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.type != "private":
+    chat = update.effective_chat
+    message = update.message
+
+    # --- 1. Логика для ГРУППЫ ---
+    if chat.type in ["group", "supergroup"]:
+        # Если пишут не в 4-ю тему, бот просто промолчит
+        if message.message_thread_id != 4:
+            return
+
+        # В группах Telegram не разрешает отправлять данные из WebApp напрямую боту.
+        # Поэтому мы даем человеку кнопку для перехода в личку с ботом.
+        # ❗ ВАЖНО: ЗАМЕНИТЕ 'YOUR_BOT_USERNAME' НА ИМЯ ВАШЕГО БОТА (БЕЗ @) ❗
+        group_keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        text="✉️ Заполнить заявку",
+                        url="https://t.me/YOUR_BOT_USERNAME"
+                    )
+                ]
+            ]
+        )
+        await message.reply_text(
+            "Для отправки запроса перейдите в личные сообщения со мной:",
+            reply_markup=group_keyboard,
+        )
         return
 
-    keyboard = ReplyKeyboardMarkup(
+    # --- 2. Логика для ЛИЧНЫХ СООБЩЕНИЙ ---
+    # Здесь оставляем нижнюю клавиатуру, так как только она умеет 
+    # корректно передавать данные из формы обратно боту.
+    private_keyboard = ReplyKeyboardMarkup(
         [
             [
                 KeyboardButton(
@@ -46,15 +76,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         resize_keyboard=True
     )
 
-    await update.message.reply_text(
+    await message.reply_text(
         "Нажмите кнопку ниже, чтобы отправить запрос:",
-        reply_markup=keyboard,
+        reply_markup=private_keyboard,
     )
 
 
 # 🔹 Обработка WebApp
 async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     if not update.message.web_app_data:
         return
 
