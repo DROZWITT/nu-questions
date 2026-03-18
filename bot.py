@@ -94,7 +94,10 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     name = data.get("name", "Не указано")
     issue = data.get("issue", "Не указано")
-    user_id = data.get("user_id", "Неизвестно")
+    
+    # ❗️ МАГИЯ: Берем железобетонный ID напрямую у самого Telegram!
+    user_id = update.message.from_user.id 
+    
     thread_id = data.get("thread_id", 4)  # Тема №4
 
     text_to_group = (
@@ -145,4 +148,3 @@ if __name__ == "__main__":
     print("🚀 Бот запущен через polling (с поддержкой порта для Render)...")
 
     app.run_polling()
-    
