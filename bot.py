@@ -3,6 +3,7 @@ import json
 import logging
 import threading
 import re
+import time  # ❗️ Добавили библиотеку для работы со временем
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from telegram import (
@@ -31,29 +32,26 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise RuntimeError("❌ BOT_TOKEN не установлен!")
 
-# ID группы
 GROUP_ID = -1003466972957
 
+# --- НАСТРОЙКИ АНТИСПАМА ---
+# Словарь, где бот будет помнить, кто и когда отправил заявку
+user_last_request = {} 
+# Время ожидания между заявками (в секундах). 300 секунд = 5 минут.
+COOLDOWN_SECONDS = 300 
+# ---------------------------
 
 # 🔹 /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     message = update.message
 
-    # --- 1. Логика для ГРУППЫ ---
     if chat.type in ["group", "supergroup"]:
         if message.message_thread_id != 4:
             return
 
         group_keyboard = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(
-                        text="✉️ Заполнить заявку",
-                        url="https://t.me/LigoRecords_bot"
-                    )
-                ]
-            ]
+            [[InlineKeyboardButton(text="✉️ Заполнить заявку", url="https://t.me/LigoRecords_bot")]]
         )
         await message.reply_text(
             "Для отправки запроса перейдите в личные сообщения со мной:",
@@ -61,29 +59,40 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # --- 2. Логика для ЛИЧНЫХ СООБЩЕНИЙ ---
     private_keyboard = ReplyKeyboardMarkup(
-        [
-            [
-                KeyboardButton(
-                    text="📨 Открыть форму запроса",
-                    web_app=WebAppInfo(url="https://nu-questions-1.onrender.com")
-                )
-            ]
-        ],
+        [[KeyboardButton(text="📨 Открыть форму запроса", web_app=WebAppInfo(url="https://nu-questions-1.onrender.com"))]],
         resize_keyboard=True
     )
-
-    await message.reply_text(
-        "Нажмите кнопку ниже, чтобы отправить запрос:",
-        reply_markup=private_keyboard,
-    )
+    await message.reply_text("Нажмите кнопку ниже, чтобы отправить запрос:", reply_markup=private_keyboard)
 
 
 # 🔹 Обработка WebApp (Получение заявки)
 async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.web_app_data:
         return
+
+    user_id = update.message.from_user.id 
+
+    # ❗️ АНТИСПАМ ПРОЦЕСС
+    current_time = time.time()
+    last_time = user_last_request.get(user_id, 0)
+
+    if current_time - last_time < COOLDOWN_SECONDS:
+        # Считаем, сколько времени осталось ждать
+        time_left = int(COOLDOWN_SECONDS - (current_time - last_time))
+        minutes = time_left // 60
+        seconds = time_left % 60
+        
+        await update.message.reply_text(
+            f"⏳ <b>Не так быстро!</b>\n"
+            f"Следующий запрос можно будет отправить через {minutes} мин. {seconds} сек.",
+            parse_mode='HTML'
+        )
+        return # Останавливаем выполнение, заявка не летит в группу!
+
+    # Если проверка пройдена, обновляем время последней заявки
+    user_last_request[user_id] = current_time
+    # ❗️ КОНЕЦ АНТИСПАМА
 
     try:
         data = json.loads(update.message.web_app_data.data)
@@ -93,8 +102,7 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     name = data.get("name", "Не указано")
     issue = data.get("issue", "Не указано")
-    user_id = update.message.from_user.id 
-    thread_id = data.get("thread_id", 4)  # Тема №4
+    thread_id = data.get("thread_id", 4)
 
     text_to_group = (
         "📩 <b>Новый запрос</b>\n\n"
@@ -110,7 +118,7 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message_thread_id=thread_id,
             parse_mode='HTML'
         )
-        await update.message.reply_text("✅ Ваш запрос отправлен! Ожидайте ответа.")
+        await update.message.reply_text("✅ Ваш запрос отправлен! Ожидайте ответа от администрации.")
 
     except Exception as e:
         print("Ошибка отправки:", e)
@@ -121,35 +129,27 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     
-    # 1. Проверяем, что это ответ на сообщение
     if not message.reply_to_message:
         return
-        
-    # 2. Проверяем, что отвечают именно на сообщение бота
     if message.reply_to_message.from_user.id != context.bot.id:
         return
 
-    # 3. Пытаемся найти ID пользователя в сообщении, на которое отвечаем
     original_text = message.reply_to_message.text or message.reply_to_message.caption
     if not original_text:
         return
 
-    # Ищем строчку "🆔 ID: 12345678"
     match = re.search(r"🆔 ID:\s*(\d+)", original_text)
     if not match:
-        return # Это было сообщение бота, но не заявка
+        return
         
     user_id = int(match.group(1))
 
-    # 4. Пересылаем ответ админа пользователю в личку
     try:
-        # Копируем сообщение, чтобы поддерживались фото, видео, файлы и текст
         await context.bot.copy_message(
             chat_id=user_id,
             from_chat_id=message.chat_id,
             message_id=message.message_id
         )
-        # Ставим реакцию или пишем, что всё ок
         await message.reply_text("✅ Ответ отправлен пользователю!", quote=True)
     except Exception as e:
         logging.error(f"Ошибка при отправке: {e}")
@@ -175,11 +175,8 @@ if __name__ == "__main__":
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Регистрируем команды и обработчики
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_handler))
-    
-    # ❗️ Новый обработчик для перехвата ваших ответов в группе (работает только в группе GROUP_ID)
     app.add_handler(MessageHandler(filters.Chat(GROUP_ID) & filters.REPLY, admin_reply_handler))
 
     print("🚀 Бот запущен через polling (с поддержкой порта для Render)...")
