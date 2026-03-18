@@ -1,6 +1,9 @@
 import os
 import json
 import logging
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
 from telegram import (
     Update,
     ReplyKeyboardMarkup,
@@ -43,8 +46,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # В группах Telegram не разрешает отправлять данные из WebApp напрямую боту.
-        # Поэтому мы даем человеку кнопку для перехода в личку с ботом.
-        # ❗ ВАЖНО: ЗАМЕНИТЕ 'YOUR_BOT_USERNAME' НА ИМЯ ВАШЕГО БОТА (БЕЗ @) ❗
         group_keyboard = InlineKeyboardMarkup(
             [
                 [
@@ -62,8 +63,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # --- 2. Логика для ЛИЧНЫХ СООБЩЕНИЙ ---
-    # Здесь оставляем нижнюю клавиатуру, так как только она умеет 
-    # корректно передавать данные из формы обратно боту.
     private_keyboard = ReplyKeyboardMarkup(
         [
             [
@@ -119,13 +118,30 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ошибка отправки.")
 
 
-# 🔹 Запуск через polling
+# --- Простой сервер-заглушка для Render ---
+class DummyHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is alive!")
+
+def run_dummy_server():
+    # Render автоматически задает переменную окружения PORT
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), DummyHandler)
+    server.serve_forever()
+
+
+# 🔹 Запуск
 if __name__ == "__main__":
+    # Запускаем фейковый веб-сервер в фоновом потоке, чтобы Render видел открытый порт
+    threading.Thread(target=run_dummy_server, daemon=True).start()
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_handler))
 
-    print("🚀 Бот запущен через polling...")
+    print("🚀 Бот запущен через polling (с поддержкой порта для Render)...")
 
     app.run_polling()
