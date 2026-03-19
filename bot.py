@@ -60,21 +60,38 @@ URL_EXCEPT = "https://raw.githubusercontent.com/ddfdi/russian_ban_words/main/ru_
 CURSE_WORDS = download_dictionary(URL_CURSE, ['хуй', 'пизд', 'ебат'])
 ABUSIVE_WORDS = download_dictionary(URL_ABUSIVE, ['дурак', 'идиот', 'дебил'])
 
-# ❗️ Объединяем мат, оскорбления и НАШИ кастомные слова-исключения из правил орфографии
-FORBIDDEN_WORDS = CURSE_WORDS + ABUSIVE_WORDS + ['гандон', 'гондон', 'пидор', 'пидар', 'пидорас', 'пидарас']
+# ❗️ ТУРЕЦКИЙ И ТУРКМЕНСКИЙ МАТ
+FOREIGN_WORDS = ['amk', 'sik', 'yarrak', 'orospu', 'göt', 'pezevenk', 'fahişe', 'jalep', 'dalbayop']
+
+# ❗️ Объединяем мат, оскорбления, кастомные слова и иностранный мат
+FORBIDDEN_WORDS = CURSE_WORDS + ABUSIVE_WORDS + ['гандон', 'гондон', 'пидор', 'пидар', 'пидорас', 'пидарас'] + FOREIGN_WORDS
 EXCEPTION_WORDS = download_dictionary(URL_EXCEPT, ['оскорблять', 'употреблять', 'расслабляться', 'колебаться'])
 
+def normalize_text(text):
+    """Дешифратор: переводит хитрые латинские буквы и цифры в русские аналоги"""
+    text = text.lower()
+    replacements = {
+        'a': 'а', 'b': 'в', 'c': 'с', 'e': 'е', 'h': 'н', 
+        'k': 'к', 'm': 'м', 'o': 'о', 'p': 'р', 't': 'т', 
+        'x': 'х', 'y': 'у', '0': 'о', '3': 'з', '4': 'ч', '@': 'а'
+    }
+    for lat, cyr in replacements.items():
+        text = text.replace(lat, cyr)
+    return text
+
 def has_profanity(text):
-    """Проверка текста на мат и оскорбления с учетом исключений"""
-    text_lower = text.lower()
+    """Проверка текста на мат с учетом дешифратора и исключений"""
+    original_lower = text.lower()
+    normalized_text = normalize_text(text)
     
-    # 1. Заменяем слова-исключения на пробелы
+    # 1. Заменяем слова-исключения на пробелы в обеих версиях
     for exc in EXCEPTION_WORDS:
-        text_lower = text_lower.replace(exc, ' ')
+        original_lower = original_lower.replace(exc, ' ')
+        normalized_text = normalized_text.replace(exc, ' ')
         
-    # 2. Проверяем очищенный текст по объединенной базе
+    # 2. Проверяем по базе и оригинал, и расшифрованную версию
     for word in FORBIDDEN_WORDS:
-        if word in text_lower:
+        if word in original_lower or word in normalized_text:
             return True
             
     return False
