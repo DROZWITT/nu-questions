@@ -3,7 +3,8 @@ import json
 import logging
 import threading
 import re
-import time  # ❗️ Добавили библиотеку для работы со временем
+import time
+import requests  # ❗️ Добавили библиотеку для скачивания словарей
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from telegram import (
@@ -35,11 +36,50 @@ if not BOT_TOKEN:
 GROUP_ID = -1003466972957
 
 # --- НАСТРОЙКИ АНТИСПАМА ---
-# Словарь, где бот будет помнить, кто и когда отправил заявку
 user_last_request = {} 
-# Время ожидания между заявками (в секундах). 300 секунд = 5 минут.
-COOLDOWN_SECONDS = 300 
+COOLDOWN_SECONDS = 300  # 5 минут
 # ---------------------------
+
+# --- НАСТРОЙКИ ЦЕНЗУРЫ И СЛОВАРЕЙ ---
+def download_dictionary(url, default_list):
+    """Скачивает список слов по ссылке"""
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        return [line.strip().lower() for line in response.text.split('\n') if line.strip()]
+    except Exception as e:
+        logging.error(f"Не удалось скачать словарь {url}: {e}")
+        return default_list
+
+# Прямые ссылки на словари
+URL_CURSE = "https://raw.githubusercontent.com/ddfdi/russian_ban_words/main/ru_curse_words.txt"
+URL_ABUSIVE = "https://raw.githubusercontent.com/ddfdi/russian_ban_words/main/ru_abusive_words.txt"
+URL_EXCEPT = "https://raw.githubusercontent.com/ddfdi/russian_ban_words/main/ru_exception_words.txt"
+
+# Скачиваем словари при запуске
+CURSE_WORDS = download_dictionary(URL_CURSE, ['хуй', 'пизд', 'ебат'])
+ABUSIVE_WORDS = download_dictionary(URL_ABUSIVE, ['дурак', 'идиот', 'дебил'])
+
+# ❗️ Объединяем мат и легкие оскорбления в один огромный список
+FORBIDDEN_WORDS = CURSE_WORDS + ABUSIVE_WORDS
+EXCEPTION_WORDS = download_dictionary(URL_EXCEPT, ['оскорблять', 'употреблять', 'расслабляться', 'колебаться'])
+
+def has_profanity(text):
+    """Проверка текста на мат и оскорбления с учетом исключений"""
+    text_lower = text.lower()
+    
+    # 1. Заменяем слова-исключения на пробелы
+    for exc in EXCEPTION_WORDS:
+        text_lower = text_lower.replace(exc, ' ')
+        
+    # 2. Проверяем очищенный текст по объединенной базе
+    for word in FORBIDDEN_WORDS:
+        if word in text_lower:
+            return True
+            
+    return False
+# ------------------------------------
+
 
 # 🔹 /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -73,12 +113,11 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.message.from_user.id 
 
-    # ❗️ АНТИСПАМ ПРОЦЕСС
+    # --- АНТИСПАМ ПРОЦЕСС ---
     current_time = time.time()
     last_time = user_last_request.get(user_id, 0)
 
     if current_time - last_time < COOLDOWN_SECONDS:
-        # Считаем, сколько времени осталось ждать
         time_left = int(COOLDOWN_SECONDS - (current_time - last_time))
         minutes = time_left // 60
         seconds = time_left % 60
@@ -88,11 +127,8 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Следующий запрос можно будет отправить через {minutes} мин. {seconds} сек.",
             parse_mode='HTML'
         )
-        return # Останавливаем выполнение, заявка не летит в группу!
-
-    # Если проверка пройдена, обновляем время последней заявки
-    user_last_request[user_id] = current_time
-    # ❗️ КОНЕЦ АНТИСПАМА
+        return 
+    # ------------------------
 
     try:
         data = json.loads(update.message.web_app_data.data)
@@ -102,6 +138,19 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     name = data.get("name", "Не указано")
     issue = data.get("issue", "Не указано")
+
+    # ❗️ ПРОВЕРКА НА МАТ И ОСКОРБЛЕНИЯ
+    if has_profanity(name) or has_profanity(issue):
+        await update.message.reply_text(
+            "🤬 <b>Запрос отклонен!</b>\n"
+            "В вашем сообщении обнаружена ненормативная лексика или оскорбления. Пожалуйста, переформулируйте ваш вопрос культурно.",
+            parse_mode='HTML'
+        )
+        return 
+    # ---------------------------------
+
+    # Обновляем таймер антиспама только если сообщение прошло цензуру
+    user_last_request[user_id] = current_time
     thread_id = data.get("thread_id", 4)
 
     text_to_group = (
