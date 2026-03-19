@@ -4,7 +4,7 @@ import logging
 import threading
 import re
 import time
-import requests  # ❗️ Добавили библиотеку для скачивания словарей
+import requests  # ❗️ Библиотека для скачивания словарей
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from telegram import (
@@ -60,8 +60,8 @@ URL_EXCEPT = "https://raw.githubusercontent.com/ddfdi/russian_ban_words/main/ru_
 CURSE_WORDS = download_dictionary(URL_CURSE, ['хуй', 'пизд', 'ебат'])
 ABUSIVE_WORDS = download_dictionary(URL_ABUSIVE, ['дурак', 'идиот', 'дебил'])
 
-# ❗️ Объединяем мат и легкие оскорбления в один огромный список
-FORBIDDEN_WORDS = CURSE_WORDS + ABUSIVE_WORDS
+# ❗️ Объединяем мат, оскорбления и НАШИ кастомные слова-исключения из правил орфографии
+FORBIDDEN_WORDS = CURSE_WORDS + ABUSIVE_WORDS + ['гандон', 'гондон', 'пидор', 'пидар', 'пидорас', 'пидарас']
 EXCEPTION_WORDS = download_dictionary(URL_EXCEPT, ['оскорблять', 'употреблять', 'расслабляться', 'колебаться'])
 
 def has_profanity(text):
