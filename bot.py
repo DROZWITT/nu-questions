@@ -4,6 +4,7 @@ import logging
 import threading
 import re
 import time
+import asyncio
 import requests  # ❗️ Библиотека для скачивания словарей
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -181,12 +182,28 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
+        # 1. Сначала публикуем сам вопрос
         await context.bot.send_message(
             chat_id=GROUP_ID,
             text=text_to_group,
             message_thread_id=thread_id,
             parse_mode='HTML'
         )
+        
+        await asyncio.sleep(1) # Микро-задержка, чтобы сообщения пришли по порядку
+        
+        # 2. АВТОМАТИЧЕСКИ публикуем следом кнопку-призыв для пользователей
+        group_keyboard = InlineKeyboardMarkup(
+            [[InlineKeyboardButton(text="✉️ Заполнить заявку", url="https://t.me/LigoRecords_bot")]]
+        )
+        await context.bot.send_message(
+            chat_id=GROUP_ID,
+            text="Для отправки запроса перейдите в личные сообщения со мной:",
+            message_thread_id=thread_id,
+            reply_markup=group_keyboard
+        )
+        
+        # 3. Уведомляем пользователя об успехе
         await update.message.reply_text("✅ Ваш запрос отправлен! Ожидайте ответа от администрации.")
 
     except Exception as e:
@@ -246,6 +263,8 @@ if __name__ == "__main__":
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_handler))
+    
+    # Возвращаем обработчик ответов от админов
     app.add_handler(MessageHandler(filters.Chat(GROUP_ID) & filters.REPLY, admin_reply_handler))
 
     print("🚀 Бот запущен через polling (с поддержкой порта для Render)...")
