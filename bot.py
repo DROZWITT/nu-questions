@@ -174,36 +174,30 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_last_request[user_id] = current_time
     thread_id = data.get("thread_id", 4)
 
+    # 🔥 ИЗМЕНЕНИЕ ЗДЕСЬ: Объединяем весь текст в одно сообщение
     text_to_group = (
         "📩 <b>Новый запрос</b>\n\n"
         f"👤 <b>Имя:</b> {name}\n"
         f"🆔 ID: {user_id}\n\n"
-        f"📝 <b>Вопрос:</b>\n{issue}"
+        f"📝 <b>Вопрос:</b>\n{issue}\n\n"
+        "💬 <i>Для отправки запроса нажмите кнопку ниже:</i>"
     )
 
     try:
-        # 1. Сначала публикуем сам вопрос
+        # 🔥 ОДНА отправка вместо двух (кнопка прикрепляется прямо к вопросу)
+        group_keyboard = InlineKeyboardMarkup(
+            [[InlineKeyboardButton(text="✉️ Заполнить заявку", url="https://t.me/LigoRecords_bot")]]
+        )
+        
         await context.bot.send_message(
             chat_id=GROUP_ID,
             text=text_to_group,
             message_thread_id=thread_id,
-            parse_mode='HTML'
-        )
-        
-        await asyncio.sleep(1) # Микро-задержка, чтобы сообщения пришли по порядку
-        
-        # 2. АВТОМАТИЧЕСКИ публикуем следом кнопку-призыв для пользователей
-        group_keyboard = InlineKeyboardMarkup(
-            [[InlineKeyboardButton(text="✉️ Заполнить заявку", url="https://t.me/LigoRecords_bot")]]
-        )
-        await context.bot.send_message(
-            chat_id=GROUP_ID,
-            text="Для отправки запроса перейдите в личные сообщения со мной:",
-            message_thread_id=thread_id,
+            parse_mode='HTML',
             reply_markup=group_keyboard
         )
         
-        # 3. Уведомляем пользователя об успехе
+        # Уведомляем пользователя об успехе
         await update.message.reply_text("✅ Ваш запрос отправлен! Ожидайте ответа от администрации.")
 
     except Exception as e:
