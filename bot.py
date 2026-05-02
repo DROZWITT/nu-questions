@@ -21,6 +21,7 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
     MessageHandler,
+    CallbackQueryHandler, # ❗️ Добавили импорт для обработки кнопок
     filters,
 )
 
@@ -35,6 +36,9 @@ if not BOT_TOKEN:
     raise RuntimeError("❌ BOT_TOKEN не установлен!")
 
 GROUP_ID = -1003466972957
+
+# 👇 СПИСОК ID АДМИНОВ
+ADMIN_IDS = [8060757101, 637540883, 750506022] 
 
 # --- НАСТРОЙКИ АНТИСПАМА ---
 user_last_request = {} 
@@ -174,7 +178,6 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_last_request[user_id] = current_time
     thread_id = data.get("thread_id", 4)
 
-    # 🔥 ИЗМЕНЕНИЕ ЗДЕСЬ: Объединяем весь текст в одно сообщение
     text_to_group = (
         "📩 <b>Новый запрос</b>\n\n"
         f"👤 <b>Имя:</b> {name}\n"
@@ -184,10 +187,11 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        # 🔥 ОДНА отправка вместо двух (кнопка прикрепляется прямо к вопросу)
-        group_keyboard = InlineKeyboardMarkup(
-            [[InlineKeyboardButton(text="✉️ Заполнить заявку", url="https://t.me/LigoRecords_bot")]]
-        )
+        # 🔥 Добавлена новая секретная кнопка для админов
+        group_keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(text="✉️ Заполнить заявку", url="https://t.me/LigoRecords_bot")],
+            [InlineKeyboardButton(text="👤 Написать в ЛС (Только админам)", callback_data=f"pm_{user_id}")]
+        ])
         
         await context.bot.send_message(
             chat_id=GROUP_ID,
@@ -203,6 +207,34 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print("Ошибка отправки:", e)
         await update.message.reply_text("❌ Ошибка отправки.")
+
+# 🔹 Обработчик скрытой кнопки для Админов
+async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    admin_id = query.from_user.id
+    
+    # 1. Проверяем, админ ли нажал на кнопку
+    if admin_id not in ADMIN_IDS:
+        await query.answer("⛔️ Эта кнопка доступна только администраторам!", show_alert=True)
+        return
+        
+    # 2. Если админ, отправляем ему прямую ссылку в личку бота
+    if query.data.startswith("pm_"):
+        target_user_id = query.data.split("_")[1]
+        profile_url = f"tg://user?id={target_user_id}"
+        
+        try:
+            await context.bot.send_message(
+                chat_id=admin_id,
+                text=f"👤 <b>Пользователь из заявки:</b>\n<a href='{profile_url}'>👉 Нажмите сюда, чтобы перейти к нему в личные сообщения</a>",
+                parse_mode='HTML'
+            )
+            # Показываем всплывающее уведомление админу в группе
+            await query.answer("✅ Ссылка на профиль отправлена вам в личные сообщения бота!", show_alert=True)
+        except Exception as e:
+            logging.error(f"Не удалось отправить в ЛС админу: {e}")
+            # Если админ не запускал бота (или удалил диалог), бот не сможет написать ему первым
+            await query.answer("❌ Ошибка! Бот не может написать вам. Сначала отправьте боту в ЛС команду /start", show_alert=True)
 
 
 # 🔹 Обработка ответов админов из группы
@@ -258,7 +290,9 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_handler))
     
-    # Возвращаем обработчик ответов от админов
+    # 🔥 Добавляем обработчик кнопок
+    app.add_handler(CallbackQueryHandler(admin_callback_handler))
+    
     app.add_handler(MessageHandler(filters.Chat(GROUP_ID) & filters.REPLY, admin_reply_handler))
 
     print("🚀 Бот запущен через polling (с поддержкой порта для Render)...")
