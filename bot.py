@@ -5,7 +5,7 @@ import threading
 import re
 import time
 import asyncio
-import requests  # ❗️ Библиотека для скачивания словарей
+import requests
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from telegram import (
@@ -21,7 +21,7 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
     MessageHandler,
-    CallbackQueryHandler, # ❗️ Добавили импорт для обработки кнопок
+    CallbackQueryHandler,
     filters,
 )
 
@@ -45,38 +45,37 @@ user_last_request = {}
 COOLDOWN_SECONDS = 300  # 5 минут
 # ---------------------------
 
-# --- НАСТРОЙКИ ЦЕНЗУРЫ И СЛОВАРЕЙ ---
-def download_dictionary(url, default_list):
-    """Скачивает список слов по ссылке"""
+# --- 🔥 УМНЫЙ ФИЛЬТР МАТА (БАЗА BARS38) 🔥 ---
+def download_dictionary(url):
+    """Скачивает список слов и превращает в set для мгновенного поиска"""
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
-        return [line.strip().lower() for line in response.text.split('\n') if line.strip()]
+        # Превращаем в set (множество) для мгновенного поиска
+        return set(word.strip().lower() for word in response.text.split('\n') if word.strip())
     except Exception as e:
         logging.error(f"Не удалось скачать словарь {url}: {e}")
-        return default_list
+        return set()
 
-# Прямые ссылки на словари
-URL_CURSE = "https://raw.githubusercontent.com/ddfdi/russian_ban_words/main/ru_curse_words.txt"
-URL_ABUSIVE = "https://raw.githubusercontent.com/ddfdi/russian_ban_words/main/ru_abusive_words.txt"
-URL_EXCEPT = "https://raw.githubusercontent.com/ddfdi/russian_ban_words/main/ru_exception_words.txt"
+# Прямая RAW-ссылка на файл из репозитория bars38
+BARS38_URL = "https://raw.githubusercontent.com/bars38/Russian_ban_words/master/words.txt"
 
-# Скачиваем словари при запуске
-CURSE_WORDS = download_dictionary(URL_CURSE, ['хуй', 'пизд', 'ебат'])
-ABUSIVE_WORDS = download_dictionary(URL_ABUSIVE, ['дурак', 'идиот', 'дебил'])
+# Загружаем базу при старте
+print("📥 Загрузка базы мата bars38...")
+BAN_WORDS_SET = download_dictionary(BARS38_URL)
+if not BAN_WORDS_SET:
+    # Запасной вариант, если GitHub отвалится
+    BAN_WORDS_SET = {'хуй', 'пизда', 'ебать', 'шлюха', 'гандон', 'сука', 'блядь'}
+print(f"✅ Загружено {len(BAN_WORDS_SET)} плохих слов из базы bars38!")
 
-# ❗️ ТУРЕЦКИЙ И ТУРКМЕНСКИЙ МАТ
-FOREIGN_WORDS = ['amk', 'sik', 'yarrak', 'orospu', 'göt', 'pezevenk', 'fahişe', 'jalep', 'dalbayop']
-
-# ❗️ ТРАНСЛИТ (русский мат английскими буквами)
-TRANSLIT_WORDS = ['huy', 'hui', 'xuy', 'blyat', 'bliat', 'suka', 'syka', 'pidor', 'pidar', 'gandon', 'gondon', 'ebat', 'eblan', 'zalu', 'mudak', 'shluha', 'shlyuha']
-
-# ❗️ Объединяем мат, оскорбления, кастомные слова, иностранный мат и транслит
-FORBIDDEN_WORDS = CURSE_WORDS + ABUSIVE_WORDS + ['гандон', 'гондон', 'пидор', 'пидар', 'пидорас', 'пидарас'] + FOREIGN_WORDS + TRANSLIT_WORDS
-EXCEPTION_WORDS = download_dictionary(URL_EXCEPT, ['оскорблять', 'употреблять', 'расслабляться', 'колебаться'])
+# Оставляем турецкий/английский мат отдельным списком для поиска по корням
+FOREIGN_AND_TRANSLIT_ROOTS = [
+    'amk', 'sik', 'yarrak', 'orospu', 'göt', 'pezevenk', 'fahişe', 'jalep', 'dalbayop',
+    'huy', 'hui', 'xuy', 'blyat', 'bliat', 'suka', 'syka', 'pidor', 'pidar', 'gandon', 'gondon', 'ebat', 'eblan', 'zalu', 'mudak', 'shluha', 'shlyuha'
+]
 
 def normalize_text(text):
-    """Дешифратор: переводит хитрые латинские буквы и цифры в русские аналоги"""
+    """Снимает маскировку с текста (замена a на а, 0 на о и т.д.)"""
     text = text.lower()
     replacements = {
         'a': 'а', 'b': 'в', 'c': 'с', 'e': 'е', 'h': 'н', 
@@ -85,25 +84,28 @@ def normalize_text(text):
     }
     for lat, cyr in replacements.items():
         text = text.replace(lat, cyr)
+        
+    # Удаляем все знаки препинания, оставляем только буквы (п.и.з.д.а -> пизда)
+    text = re.sub(r'[^а-яёa-z\s]', '', text)
     return text
 
 def has_profanity(text):
-    """Проверка текста на мат с учетом дешифратора и исключений"""
-    original_lower = text.lower()
+    """Финальная проверка текста"""
     normalized_text = normalize_text(text)
+    words = normalized_text.split()
     
-    # 1. Заменяем слова-исключения на пробелы в обеих версиях
-    for exc in EXCEPTION_WORDS:
-        original_lower = original_lower.replace(exc, ' ')
-        normalized_text = normalized_text.replace(exc, ' ')
-        
-    # 2. Проверяем по базе и оригинал, и расшифрованную версию
-    for word in FORBIDDEN_WORDS:
-        if word in original_lower or word in normalized_text:
+    for word in words:
+        # 1. Проверка по гигантской базе bars38 (мгновенно!)
+        if word in BAN_WORDS_SET:
             return True
             
+        # 2. Проверка транслита и иностранного мата по корням
+        for root in FOREIGN_AND_TRANSLIT_ROOTS:
+            if root in word:
+                return True
+                
     return False
-# ------------------------------------
+# ------------------------------------------
 
 
 # 🔹 /start
@@ -164,7 +166,7 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = data.get("name", "Не указано")
     issue = data.get("issue", "Не указано")
 
-    # ❗️ ПРОВЕРКА НА МАТ И ОСКОРБЛЕНИЯ
+    # ❗️ ПРОВЕРКА НА МАТ (НОВЫЙ ФИЛЬТР)
     if has_profanity(name) or has_profanity(issue):
         await update.message.reply_text(
             "🤬 <b>Запрос отклонен!</b>\n"
@@ -174,7 +176,6 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return 
     # ---------------------------------
 
-    # Обновляем таймер антиспама только если сообщение прошло цензуру
     user_last_request[user_id] = current_time
     thread_id = data.get("thread_id", 4)
 
@@ -187,7 +188,6 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        # 🔥 Добавлена новая секретная кнопка для админов
         group_keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton(text="✉️ Заполнить заявку", url="https://t.me/LigoRecords_bot")],
             [InlineKeyboardButton(text="👤 Написать в ЛС (Только админам)", callback_data=f"pm_{user_id}")]
@@ -201,7 +201,6 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=group_keyboard
         )
         
-        # Уведомляем пользователя об успехе
         await update.message.reply_text("✅ Ваш запрос отправлен! Ожидайте ответа от администрации.")
 
     except Exception as e:
@@ -213,12 +212,10 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
     query = update.callback_query
     admin_id = query.from_user.id
     
-    # 1. Проверяем, админ ли нажал на кнопку
     if admin_id not in ADMIN_IDS:
         await query.answer("⛔️ Эта кнопка доступна только администраторам!", show_alert=True)
         return
         
-    # 2. Если админ, отправляем ему прямую ссылку в личку бота
     if query.data.startswith("pm_"):
         target_user_id = query.data.split("_")[1]
         profile_url = f"tg://user?id={target_user_id}"
@@ -229,11 +226,9 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
                 text=f"👤 <b>Пользователь из заявки:</b>\n<a href='{profile_url}'>👉 Нажмите сюда, чтобы перейти к нему в личные сообщения</a>",
                 parse_mode='HTML'
             )
-            # Показываем всплывающее уведомление админу в группе
             await query.answer("✅ Ссылка на профиль отправлена вам в личные сообщения бота!", show_alert=True)
         except Exception as e:
             logging.error(f"Не удалось отправить в ЛС админу: {e}")
-            # Если админ не запускал бота (или удалил диалог), бот не сможет написать ему первым
             await query.answer("❌ Ошибка! Бот не может написать вам. Сначала отправьте боту в ЛС команду /start", show_alert=True)
 
 
@@ -290,9 +285,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_handler))
     
-    # 🔥 Добавляем обработчик кнопок
     app.add_handler(CallbackQueryHandler(admin_callback_handler))
-    
     app.add_handler(MessageHandler(filters.Chat(GROUP_ID) & filters.REPLY, admin_reply_handler))
 
     print("🚀 Бот запущен через polling (с поддержкой порта для Render)...")
