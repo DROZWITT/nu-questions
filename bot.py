@@ -21,6 +21,7 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
     MessageHandler,
+    CallbackQueryHandler,
     filters,
 )
 
@@ -138,7 +139,7 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ошибка отправки.")
 
 
-# 🔹 Обработка ответов админов (С АВТО-ССЫЛКОЙ В ЛС)
+# 🔹 Обработка ответов админов (ТИХИЙ РЕЖИМ В ГРУППЕ + УВЕДОМЛЕНИЕ В ЛС)
 async def admin_reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     admin_id = message.from_user.id # ID админа, который отвечает
@@ -154,25 +155,25 @@ async def admin_reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = int(match.group(1))
 
     try:
-        # 1. Отправляем ответ пользователю
+        # 1. Тихо пересылаем ответ клиенту (в группе бот молчит)
         await context.bot.copy_message(chat_id=user_id, from_chat_id=message.chat_id, message_id=message.message_id)
-        await message.reply_text("✅ Ответ отправлен пользователю!", quote=True)
         
-        # 2. Сразу даем админу ссылку на профиль в его ЛС с ботом
+        # 2. Отправляем подтверждение и ссылку админу В ЛИЧКУ
         profile_url = f"tg://user?id={user_id}"
         try:
             await context.bot.send_message(
                 chat_id=admin_id,
-                text=f"🔗 <b>Вы ответили на запрос пользователя {user_id}</b>\n\n"
-                     f"Если нужно продолжить общение лично:\n"
+                text=f"✅ <b>Ваш ответ успешно доставлен клиенту!</b>\n\n"
+                     f"🔗 <b>Профиль клиента:</b>\n"
                      f"<a href='{profile_url}'>👉 Перейти к диалогу с ним</a>",
                 parse_mode='HTML'
             )
         except:
-            pass # Если админ не запустил бота в ЛС, просто пропускаем
+            # Если админ не запустил бота в личке, извиняемся и отправляем в группу как запасной вариант
+            await message.reply_text("✅ Ответ отправлен!\n<i>(Бот не смог написать вам в ЛС. Отправьте боту /start в личные сообщения, чтобы не засорять группу)</i>", parse_mode='HTML', quote=True)
 
     except Exception as e:
-        await message.reply_text("❌ Ошибка отправки (возможно, бот заблокирован).", quote=True)
+        await message.reply_text("❌ Ошибка отправки (возможно, клиент заблокировал бота).", quote=True)
 
 
 # --- Простой сервер для Render ---
@@ -189,5 +190,5 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_handler))
     app.add_handler(MessageHandler(filters.Chat(GROUP_ID) & filters.REPLY, admin_reply_handler))
-    print("🚀 Бот запущен!")
+    print("🚀 Бот запущен! Очередь чиста, ЛС настроено.")
     app.run_polling()
