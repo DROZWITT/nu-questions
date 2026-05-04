@@ -98,10 +98,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat.type in ["group", "supergroup"]:
         if message.message_thread_id != 4: return
         group_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(text="✉️ Заполнить заявку", url="https://t.me/LigoRecords_bot")]])
-        await message.reply_text("Для отправки запроса перейдите в личные сообщения со мной:", reply_markup=group_keyboard)
+        await message.reply_text("Для отправки запроса перейдите в личные сообщения со мной:", reply_markup=group_keyboard, disable_notification=True)
         return
     private_keyboard = ReplyKeyboardMarkup([[KeyboardButton(text="📨 Открыть форму запроса", web_app=WebAppInfo(url="https://nu-questions-1.onrender.com"))]], resize_keyboard=True)
-    await message.reply_text("Нажмите кнопку ниже, чтобы отправить запрос:", reply_markup=private_keyboard)
+    await message.reply_text("Нажмите кнопку ниже, чтобы отправить запрос:", reply_markup=private_keyboard, disable_notification=True)
 
 
 # 🔹 Обработка WebApp (Получение заявки)
@@ -113,7 +113,7 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if current_time - last_time < COOLDOWN_SECONDS:
         time_left = int(COOLDOWN_SECONDS - (current_time - last_time))
-        await update.message.reply_text(f"⏳ <b>Не так быстро!</b>\nСледующий запрос через {time_left // 60} мин.", parse_mode='HTML')
+        await update.message.reply_text(f"⏳ <b>Не так быстро!</b>\nСледующий запрос через {time_left // 60} мин.", parse_mode='HTML', disable_notification=True)
         return 
 
     try:
@@ -122,7 +122,7 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     name, issue = data.get("name", "Не указано"), data.get("issue", "Не указано")
     if has_profanity(name) or has_profanity(issue):
-        await update.message.reply_text("🤬 <b>Запрос отклонен!</b>\nСоблюдайте цензуру.", parse_mode='HTML')
+        await update.message.reply_text("🤬 <b>Запрос отклонен!</b>\nСоблюдайте цензуру.", parse_mode='HTML', disable_notification=True)
         return 
 
     user_last_request[user_id] = current_time
@@ -133,10 +133,10 @@ async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         group_keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton(text="✉️ Заполнить заявку", url="https://t.me/LigoRecords_bot")]
         ])
-        await context.bot.send_message(chat_id=GROUP_ID, text=text_to_group, message_thread_id=thread_id, parse_mode='HTML', reply_markup=group_keyboard)
-        await update.message.reply_text("✅ Ваш запрос отправлен!")
+        await context.bot.send_message(chat_id=GROUP_ID, text=text_to_group, message_thread_id=thread_id, parse_mode='HTML', reply_markup=group_keyboard, disable_notification=True)
+        await update.message.reply_text("✅ Ваш запрос отправлен!", disable_notification=True)
     except Exception as e:
-        await update.message.reply_text("❌ Ошибка отправки.")
+        await update.message.reply_text("❌ Ошибка отправки.", disable_notification=True)
 
 
 # 🔹 Обработка ответов админов (ТИХИЙ РЕЖИМ В ГРУППЕ + УВЕДОМЛЕНИЕ В ЛС)
@@ -156,7 +156,7 @@ async def admin_reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     try:
         # 1. Тихо пересылаем ответ клиенту (в группе бот молчит)
-        await context.bot.copy_message(chat_id=user_id, from_chat_id=message.chat_id, message_id=message.message_id)
+        await context.bot.copy_message(chat_id=user_id, from_chat_id=message.chat_id, message_id=message.message_id, disable_notification=True)
         
         # 2. Отправляем подтверждение и ссылку админу В ЛИЧКУ
         profile_url = f"tg://user?id={user_id}"
@@ -166,14 +166,15 @@ async def admin_reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                 text=f"✅ <b>Ваш ответ успешно доставлен клиенту!</b>\n\n"
                      f"🔗 <b>Профиль клиента:</b>\n"
                      f"<a href='{profile_url}'>👉 Перейти к диалогу с ним</a>",
-                parse_mode='HTML'
+                parse_mode='HTML',
+                disable_notification=True
             )
         except:
             # Если админ не запустил бота в личке, извиняемся и отправляем в группу как запасной вариант
-            await message.reply_text("✅ Ответ отправлен!\n<i>(Бот не смог написать вам в ЛС. Отправьте боту /start в личные сообщения, чтобы не засорять группу)</i>", parse_mode='HTML', quote=True)
+            await message.reply_text("✅ Ответ отправлен!\n<i>(Бот не смог написать вам в ЛС. Отправьте боту /start в личные сообщения, чтобы не засорять группу)</i>", parse_mode='HTML', quote=True, disable_notification=True)
 
     except Exception as e:
-        await message.reply_text("❌ Ошибка отправки (возможно, клиент заблокировал бота).", quote=True)
+        await message.reply_text("❌ Ошибка отправки (возможно, клиент заблокировал бота).", quote=True, disable_notification=True)
 
 
 # --- Простой сервер для Render ---
@@ -190,5 +191,5 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_handler))
     app.add_handler(MessageHandler(filters.Chat(GROUP_ID) & filters.REPLY, admin_reply_handler))
-    print("🚀 Бот запущен! Очередь чиста, ЛС настроено.")
+    print("🚀 Бот запущен! Очередь чиста, ЛС настроено. Тихий режим: ВКЛ.")
     app.run_polling()
